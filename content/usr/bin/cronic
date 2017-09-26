@@ -2,14 +2,16 @@
 #set -x
 set -eu
 
+VERBOSE=
 SHELLWRAP=
 LOGFILE=/dev/null
 STDOUTERR=/tmp/cronic.out.$$
 trap "rm -f $STDOUTERR" EXIT
 
 OPTLOCK=""
-while getopts "sl:L:o:" opt; do
+while getopts "vsl:L:o:" opt; do
     case $opt in
+        v) VERBOSE=1 ;;
         l) OPTLOCK=$OPTARG ;;
         L) OPTLOCK=/var/lock/$OPTARG ;;
         o) LOGFILE=$OPTARG;;
@@ -27,7 +29,11 @@ _cronic_runcmd() {
     local started_at=$(date +%FT%T)
     echo "$started_at - Started : $@" >>$LOGFILE
     set +e -o pipefail
-    ( "$@") 2>&1 |tee -a $LOGFILE >$STDOUTERR
+    if [[ $VERBOSE == "1" ]]; then
+        ( "$@") 2>&1 |tee -a $LOGFILE |tee $STDOUTERR
+    else
+        ( "$@") 2>&1 |tee -a $LOGFILE >$STDOUTERR
+    fi
     errcode=$?
     local finished_at=$(date +%FT%T)
     echo "$finished_at - Finished with $errcode exit code: $@" >>$LOGFILE
