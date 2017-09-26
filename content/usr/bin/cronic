@@ -1,0 +1,46 @@
+#!/bin/bash
+#set -x
+set -eu
+
+SHELLWRAP=
+LOGFILE=/dev/null
+STDOUTERR=/tmp/cronic.out.$$
+trap "rm -f $STDOUTERR" EXIT
+
+OPTLOCK=""
+while getopts "sl:L:o:" opt; do
+    case $opt in
+        l) OPTLOCK=$OPTARG ;;
+        L) OPTLOCK=/var/lock/$OPTARG ;;
+        o) LOGFILE=$OPTARG;;
+        s) SHELLWRAP=1 ;;
+    esac
+done
+shift $(($OPTIND - 1))
+
+if [[ $SHELLWRAP ]]; then
+  set -- /bin/bash -e -o pipefail -c "$@"
+fi
+
+_cronic_runcmd() {
+    local errcode
+    local started_at=$(date +%FT%T)
+    echo "$started_at - Started : $@" >>$LOGFILE
+    set +e -o pipefail
+    ( "$@") 2>&1 |tee -a $LOGFILE >$STDOUTERR
+    errcode=$?
+    local finished_at=$(date +%FT%T)
+    echo "$finished_at - Finished with $errcode exit code: $@" >>$LOGFILE
+    if [[ $errcode -ne 0 ]]; then
+      echo "Ran from $started_at to $finished_at and exit code '$errcode': $@"
+      cat "$STDOUTERR"
+    fi
+    return $errcode
+}
+
+if [[ $OPTLOCK ]]; then
+    mkdir -p $(dirname $OPTLOCK)
+    ( flock -n 9 || exit 1 ; _cronic_runcmd "$@" ) 9>$OPTLOCK
+else
+    _cronic_runcmd "$@"
+fi
